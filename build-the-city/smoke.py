@@ -17,18 +17,12 @@ def tap_place(page, key, c, r):
 
 with sync_playwright() as p:
     b = p.chromium.launch()
-    # ---- teacher: create PIN, turn on scores, make a game link
+    # ---- teacher: open Teacher view, turn on scores, make a game link
     tctx = b.new_context(viewport={'width': 1366, 'height': 820}); t = tctx.new_page()
     t.on('pageerror', lambda e: errors.append('teacher pageerror: %s' % e))
     t.goto(URL)
-    check(t.is_visible('#gate'), 'start screen shows first')
-    t.click('[data-go="pin"]'); t.fill('#gPin', '12'); t.click('#gateBox [type=submit]')
-    check('4 to 8' in t.inner_text('#gateErr'), 'short PIN rejected')
-    t.fill('#gPin', '2468'); t.click('#gateBox [type=submit]')
-    check(t.is_hidden('#gate') and t.evaluate('S.teacher'), 'teacher logged in with new PIN')
-    t.click('#logoutBtn'); t.click('[data-go="pin"]'); t.fill('#gPin', '1111'); t.click('#gateBox [type=submit]')
-    check('Wrong PIN' in t.inner_text('#gateErr'), 'wrong PIN rejected')
-    t.fill('#gPin', '2468'); t.click('#gateBox [type=submit]')
+    check(t.is_visible('#tray .chip') and t.is_visible('#name'), 'opens straight to the student map, no login')
+    t.click('#modeBtn'); check(t.evaluate('S.teacher'), 'Teacher button opens Teacher view')
     t.select_option('#scoreMode', 'speed'); t.click('#linkBtn')
     t.wait_for_selector('#linkOut:not([hidden])'); link = t.input_value('#linkOut')
     check('#g=' in link and len(link) < 4000, 'game link created (%d chars)' % len(link))
@@ -41,11 +35,9 @@ with sync_playwright() as p:
     # ---- student: open link, fill info, play round 1
     sctx = b.new_context(viewport={'width': 820, 'height': 1180}, has_touch=True, accept_downloads=True); s = sctx.new_page()
     s.on('pageerror', lambda e: errors.append('student pageerror: %s' % e))
-    s.goto(link); s.wait_for_selector('#gName')
-    check(s.locator('[data-go="pin"]').count() == 0, 'student link opens the info form, no teacher login')
-    s.click('#gateBox [type=submit]'); check('type your name' in s.inner_text('#gateErr'), 'name is required')
-    s.fill('#gName', 'Somchai Dee'); s.fill('#gCls', 'M1/2'); s.fill('#gNo', '7'); s.click('#gateBox [type=submit]')
-    check(s.evaluate('S.mode') == 'speed' and 'Somchai' in s.inner_text('#who'), 'student playing with teacher settings')
+    s.goto(link); s.wait_for_selector('#tray .chip')
+    s.fill('#name', 'Somchai Dee')
+    check(s.evaluate('S.mode') == 'speed' and s.evaluate('S.info.name') == 'Somchai Dee', 'student playing with teacher settings')
     check(s.evaluate('location.hash') == '', 'link data removed from address bar')
     ans = s.evaluate('S.rounds[0].answer')
     for k, lot in ans.items(): tap_place(s, k, lot % 14, lot // 14)
@@ -68,7 +60,7 @@ with sync_playwright() as p:
     with s.expect_download() as d: s.click('#saveScores')
     path = pathlib.Path(tempfile.mkdtemp()) / d.value.suggested_filename; d.value.save_as(path)
     text = path.read_text(encoding='utf-8-sig')
-    check(d.value.suggested_filename == 'BuildTheCity_M1_2_7_Somchai_Dee.csv' and 'Somchai Dee,M1/2,7,1,6,6' in text, 'score file saved: ' + d.value.suggested_filename)
+    check(d.value.suggested_filename == 'BuildTheCity_Somchai_Dee.csv' and 'Somchai Dee,,,1,6,6' in text, 'score file saved: ' + d.value.suggested_filename)
 
     # ---- teacher loads the file
     t.once('dialog', lambda dlg: dlg.accept())

@@ -101,11 +101,6 @@ details[open] summary{margin-bottom:.5rem}
 @keyframes pulse{50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){#timerBox.warn #tDisp{animation:none}}
 /* overlay */
-#gate{position:fixed;inset:0;background:var(--navy);display:grid;place-items:center;z-index:45;padding:1rem;overflow:auto}
-#gateBox{background:#fff;border-radius:1rem;padding:1.6rem;width:min(26rem,100%);display:flex;flex-direction:column;gap:.8rem}
-#gateBox h2{margin:0;font-size:1.6rem}
-#gateBox .big{font-size:1.2rem;padding:1rem;min-height:64px}
-#gateErr{color:#b91c1c;margin:0;min-height:1.2em}
 #scoreBox{background:#ecfdf5;border:1px solid #86efac;border-radius:.6rem;padding:.6rem;font-weight:700}
 #scoreTable table{width:100%;border-collapse:collapse;font-size:.82rem}
 #scoreTable th,#scoreTable td{border-bottom:1px solid var(--line);padding:.25rem;text-align:left}
@@ -120,8 +115,7 @@ details[open] summary{margin-bottom:.5rem}
 <header>
   <h1>🏙️ Build the City</h1>
   <span id="roundTag"></span>
-  <span id="who"></span>
-  <button type="button" id="logoutBtn">Log out</button>
+  <button type="button" id="modeBtn" aria-pressed="false">👩‍🏫 Teacher</button>
 </header>
 <main>
   <div id="mapWrap">
@@ -131,7 +125,7 @@ details[open] summary{margin-bottom:.5rem}
   <aside>
     <!-- STUDENT -->
     <section id="studentPanel">
-      <p id="playerLine" style="margin:0;font-weight:700"></p>
+      <label>Your name <input id="name" maxlength="40" autocomplete="off" placeholder="Type your name"></label>
       <label>Round <select id="roundSel"></select></label>
       <p class="hint">Listen to your teacher. Drag a landmark onto the map, or tap it and then tap a spot. Drag it back to the list to remove it.</p>
       <div class="row"><button type="button" id="cdBtn" class="primary">⏱️ Start 10-second countdown</button></div>
@@ -237,7 +231,6 @@ details[open] summary{margin-bottom:.5rem}
     </section>
   </aside>
 </main>
-<div id="gate" hidden><form id="gateBox" novalidate></form></div>
 <div id="overlay" hidden><div id="ovBox" role="dialog" aria-modal="true"></div></div>
 
 <script id="logic">
@@ -445,9 +438,9 @@ const NS='http://www.w3.org/2000/svg';
 function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e}
 const clone=o=>JSON.parse(JSON.stringify(o));
 const KEY='buildTheCity.v1';
-const S={role:null,teacher:false,editing:false,present:false,round:0,step:0,reveal:0,placed:{},locked:false,roads:[...DEF_ROADS],rounds:clone(DEF_ROUNDS),cls:'',
-  mode:'off',t0:null,took:null,info:{name:'',cls:'',no:''},pin:'',linked:false,history:[],scores:[],result:null};
-const PERSIST=['role','teacher','round','placed','locked','roads','rounds','cls','mode','t0','took','info','pin','linked','history','scores','result'];
+const S={teacher:false,editing:false,present:false,round:0,step:0,reveal:0,placed:{},locked:false,roads:[...DEF_ROADS],rounds:clone(DEF_ROUNDS),cls:'',
+  mode:'off',t0:null,took:null,info:{name:'',cls:'',no:''},history:[],scores:[],result:null};
+const PERSIST=['teacher','round','placed','locked','roads','rounds','cls','mode','t0','took','info','history','scores','result'];
 let sel=null;
 const svg=$('#map');
 
@@ -478,7 +471,7 @@ function checkGame(g){
 async function openLink(){
   const m=location.hash.match(/g=([\w-]+)/);if(!m)return;
   try{const g=checkGame(await unpack(m[1]));if(!g)throw 0;
-    Object.assign(S,g,{linked:true,role:'student',teacher:false,editing:false,placed:{},locked:false,t0:null,took:null,result:null});save()}
+    Object.assign(S,g,{teacher:false,editing:false,placed:{},locked:false,t0:null,took:null,result:null});save()}
   catch(e){alert('This game link is broken. Ask your teacher for a new one.')}
   history.replaceState(null,'',location.pathname+location.search);
 }
@@ -572,8 +565,8 @@ function render(){
   const b=document.body.classList;
   b.toggle('teacher',S.teacher);b.toggle('editing',S.teacher&&S.editing);b.toggle('present',S.present&&!S.teacher);
   b.toggle('locked',S.locked&&!S.teacher);b.toggle('picking',!!sel);
-  const I=S.info,who=S.teacher?'👩‍🏫 Teacher':`🎓 ${I.name}${I.cls?' · '+I.cls:''}${I.no?' · No. '+I.no:''}`;
-  $('#who').textContent=S.role?who:'';$('#playerLine').textContent=who;
+  const I=S.info;$('#modeBtn').setAttribute('aria-pressed',S.teacher);
+  if(document.activeElement!==$('#name'))$('#name').value=I.name;
   $('#roundTag').textContent=`Round ${S.round+1}: ${S.rounds[S.round].title}`;
   drawLandmarks();drawTray();
   $('#roundSel').replaceChildren(...S.rounds.map((R,i)=>new Option(`Round ${i+1}: ${R.title}`,i)));$('#roundSel').value=S.round;
@@ -585,46 +578,9 @@ function render(){
   $('#pRound').textContent=`Round ${S.round+1}: ${S.rounds[S.round].title}`;
   $('#pTime').textContent=resultLine(S.result);$('#scoreMode').value=S.mode;
   if(S.teacher){drawTeacher();drawScores()}
-  gate();
 }
 const resultLine=r=>!r||S.mode==='off'?'':`✅ ${r.correct} of ${r.total} correct`+(S.mode==='speed'&&r.seconds!==''?` · ⏱️ ${fmt(+r.seconds)}`:'')+` · ⭐ ${r.score} points`;
 
-/* ---- start screen: student info, or teacher PIN ---- */
-let gateView='role';
-function gate(){
-  const need=!S.role||(S.role==='student'&&!S.info.name.trim());
-  $('#gate').hidden=!need;if(!need)return;
-  if(S.role==='student')gateView='info';
-  const f=$('#gateBox');if(f.dataset.view===gateView+S.pin.length)return;f.dataset.view=gateView+S.pin.length;
-  const teacherOk=!S.linked||S.pin;
-  if(gateView==='role')f.innerHTML='<h2>🏙️ Build the City</h2><p class="hint">Who is playing?</p>'+
-    '<button type="button" class="primary big" data-go="info">🎓 I am a student</button>'+
-    (teacherOk?'<button type="button" class="big" data-go="pin">👩‍🏫 I am the teacher</button>':'');
-  else if(gateView==='pin')f.innerHTML=(S.pin?'<h2>Teacher login</h2><label>Teacher PIN <input id="gPin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8" required></label>'
-      :'<h2>Create a teacher PIN</h2><p class="hint">4 to 8 digits. You will use it to open Teacher view on this device.</p><label>New PIN <input id="gPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" required></label>')+
-    '<p id="gateErr" role="alert"></p><button type="submit" class="primary big">Log in</button><button type="button" data-go="role">◀ Back</button>'+
-    (S.pin?'<button type="button" data-go="forgot" style="font-size:.85rem">Forgot PIN?</button>':'');
-  else{f.innerHTML='<h2>Before you play</h2><label>Full name <input id="gName" maxlength="40" autocomplete="name" required></label>'+
-    '<label>Class (for example M1/2) <input id="gCls" maxlength="12"></label><label>Number in class <input id="gNo" inputmode="numeric" maxlength="3"></label>'+
-    '<p id="gateErr" role="alert"></p><button type="submit" class="primary big">Start playing ▶</button>'+(S.linked?'':'<button type="button" data-go="role">◀ Back</button>');
-    $('#gName').value=S.info.name;$('#gCls').value=S.info.cls;$('#gNo').value=S.info.no}
-  const first=f.querySelector('input,button');if(first)first.focus();
-}
-$('#gateBox').addEventListener('click',e=>{const go=e.target.dataset.go;if(!go)return;
-  if(go==='forgot'){if(!confirm('Reset the teacher PIN? Your edited rounds and class scores on this device will be deleted.'))return;
-    Object.assign(S,{pin:'',rounds:clone(DEF_ROUNDS),roads:[...DEF_ROADS],scores:[]});save();drawStatic();fillEditor();gateView='pin'}
-  else{gateView=go;if(go==='role')S.role=null}
-  render()});
-$('#gateBox').addEventListener('submit',e=>{e.preventDefault();const err=m=>$('#gateErr').textContent=m;
-  if(gateView==='pin'){const p=$('#gPin').value.trim();
-    if(!S.pin){if(!/^\d{4,8}$/.test(p))return err('Use 4 to 8 digits.');S.pin=p}
-    else if(p!==S.pin)return err('Wrong PIN.');
-    Object.assign(S,{role:'teacher',teacher:true,present:false})}
-  else{const name=$('#gName').value.replace(/\s+/g,' ').trim();if(!name)return err('Please type your name.');
-    S.info={name,cls:$('#gCls').value.trim(),no:$('#gNo').value.trim()};Object.assign(S,{role:'student',teacher:false,editing:false})}
-  sel=null;save();render()});
-$('#logoutBtn').onclick=()=>{Object.assign(S,{role:null,teacher:false,editing:false,present:false});if(!S.linked)S.info={name:'',cls:'',no:''};
-  gateView='role';$('#gateBox').dataset.view='';sel=null;closeOverlay();save();render()};
 
 /* ---- placing landmarks ---- */
 function lotAt(cx,cy){
@@ -706,7 +662,9 @@ $('#tAdd').onclick=()=>{T.left+=15;tShow()};
 $('#tDur').onchange=e=>{T.dur=+e.target.value;tStop();T.left=T.dur;tShow()};
 
 /* ---- student controls ---- */
-$('#saveScores').onclick=()=>{const I=S.info;download(`BuildTheCity_${safeName(I.cls)}_${safeName(I.no||'0')}_${safeName(I.name)}.csv`,toCSV(S.history))};
+$('#saveScores').onclick=()=>download(`BuildTheCity_${safeName(S.info.name)}.csv`,toCSV(S.history));
+$('#name').oninput=e=>{S.info.name=e.target.value.slice(0,40);save();$('#pName').textContent=S.info.name.trim()?`${S.info.name.trim()}’s City`:'My City'};
+$('#modeBtn').onclick=()=>{S.teacher=!S.teacher;S.editing=false;S.present=false;sel=null;closeOverlay();save();render()};
 function newRound(i){S.round=i;S.placed={};S.t0=S.took=S.result=null;S.locked=false;S.present=false;sel=null;save();render()}
 $('#roundSel').onchange=e=>{const i=+e.target.value;if(Object.keys(S.placed).length&&!confirm('Change round? Your map will be cleared.')){e.target.value=S.round;return}newRound(i)};
 $('#cdBtn').onclick=countdown;
