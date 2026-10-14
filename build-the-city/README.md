@@ -15,6 +15,7 @@ An English speaking game for giving directions. Students build a city on their o
 
 - The command list checks every command against the answer map: ✓ one clear answer, ℹ open answer (several spots fit), ⚠ unclear, ✖ contradiction.
 - **✏️ Edit round, roads and answers**: change the title and commands (one per line), drag landmarks to set the answer spots, and rename roads. Renaming a road also changes it in every command.
+- **Show build time to students** (off by default): each student sees how long they took, from their first landmark to pressing the countdown. There is no ranking.
 - Edits are saved in the teacher's browser only. If you rename roads, press **🔗 Copy student link** and send that link, so students' maps show the same road names.
 
 ## Publish it online (pick one)
