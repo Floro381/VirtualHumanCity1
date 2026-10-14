@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build the City</title>
+<style>
+:root{--bg:#f4f1ea;--panel:#fff;--ink:#1f2933;--muted:#5f6b76;--accent:#2563eb;--line:#d9d4c7;--navy:#1e3a5f}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;min-height:100vh}
+[hidden]{display:none!important}
+header{display:flex;align-items:center;gap:.5rem .8rem;padding:.5rem .8rem;background:var(--navy);color:#fff;flex-wrap:wrap}
+header h1{font-size:1.15rem;margin:0}
+#roundTag{flex:1;font-weight:600;opacity:.9}
+button,select,input,textarea{font:inherit}
+button{padding:.45rem .8rem;border-radius:.5rem;border:1px solid #b9c2cc;background:#fff;color:var(--ink);cursor:pointer;min-height:40px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+header button{background:transparent;color:#fff;border-color:#ffffff80}
+header button[aria-pressed=true]{background:#fff;color:var(--navy)}
+input,select,textarea{border:1px solid #b9c2cc;border-radius:.4rem;padding:.4rem .5rem;width:100%;background:#fff}
+textarea{resize:vertical}
+label{display:flex;flex-direction:column;gap:.2rem;font-weight:600;font-size:.9rem}
+main{flex:1;display:flex;min-height:0}
+#mapWrap{flex:1;min-width:0;padding:.5rem;position:relative;display:flex;align-items:flex-start;justify-content:center}
+#map{width:100%;height:auto;max-height:calc(100vh - 72px);display:block;user-select:none;-webkit-user-select:none;background:#cfe3b4;border-radius:.6rem;box-shadow:0 1px 4px #0002}
+#lockTag{position:absolute;top:1rem;left:1rem;background:#fff;border-radius:2rem;padding:.25rem .8rem;font-weight:700;box-shadow:0 1px 4px #0003;display:none}
+body.locked #lockTag{display:block}
+aside{width:350px;flex:none;overflow:auto;background:var(--panel);border-left:1px solid var(--line);padding:.8rem;display:flex;flex-direction:column;gap:1rem;max-height:calc(100vh - 56px)}
+aside section{display:flex;flex-direction:column;gap:.6rem}
+aside h2{font-size:1.1rem;margin:0}
+aside h3{font-size:.95rem;margin:.3rem 0 0}
+.row{display:flex;gap:.4rem;flex-wrap:wrap}
+.row>button{flex:1}
+.hint{font-size:.85rem;color:var(--muted);margin:0}
+@media (max-width:860px){main{flex-direction:column}aside{width:auto;border-left:0;border-top:1px solid var(--line);max-height:none}#map{max-height:70vh}}
+/* panels per mode */
+#teacherPanel,#presentPanel,#timerBox,#editPanel{display:none}
+body.teacher #studentPanel,body.present #studentPanel{display:none}
+body.teacher #teacherPanel,body.present #presentPanel,body.teacher #timerBox,body.present #timerBox{display:flex}
+body.editing #editPanel{display:flex}
+.liveWrap{display:contents}
+body.editing .live{display:none}
+body.teacher:not(.editing) #traySec,body.present #traySec,body.locked #traySec{display:none}
+/* tray */
+#tray{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:.35rem}
+.chip{display:flex;flex-direction:column;align-items:center;gap:0;padding:.3rem .2rem;min-height:62px;touch-action:none;font-size:.72rem;line-height:1.1;text-align:center}
+.chip .emo{font-size:1.6rem;line-height:1.2}
+.chip.on{background:#ecfdf5;border-color:#86efac}
+.chip.sel,.lm.sel rect{outline:3px solid var(--accent)}
+.chip.sel{background:#dbeafe}
+.ghost{position:fixed;z-index:50;font-size:2.6rem;pointer-events:none;transform:translate(-50%,-60%);filter:drop-shadow(0 3px 4px #0005)}
+/* svg */
+.lot{fill:#f7f4ec;stroke:#cfc6b0;stroke-dasharray:4 3}
+body.picking .lot{cursor:pointer}
+.lot.hot{fill:#bfdbfe;stroke:#2563eb;stroke-dasharray:none;stroke-width:2}
+.mid{stroke:#facc15;stroke-width:2;stroke-dasharray:10 8}
+.rlabels text{font-size:12.5px;font-weight:700;fill:#fff;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#374151;stroke-width:3px;pointer-events:none}
+.rlabels text.v{font-size:11px}
+#hl rect{fill:#fde047;opacity:.5;pointer-events:none}
+.lm{cursor:grab;touch-action:none}
+body.locked .lm,body.teacher:not(.editing) .lm{cursor:default}
+.lm rect{fill:#fff;stroke:#64748b;stroke-width:1.5}
+.lm.sel rect{stroke:#2563eb;stroke-width:3;outline:none}
+.lm.ans rect{stroke:#16a34a;stroke-width:3}
+.lm .emo{font-size:26px;text-anchor:middle;dominant-baseline:central}
+.lm .nm{font-size:8.5px;font-weight:700;fill:#1f2937;text-anchor:middle}
+.lm .badge circle{fill:#16a34a}
+.lm .badge text{fill:#fff;font-size:11px;font-weight:700;text-anchor:middle}
+.compass text{font-size:11px;font-weight:800;text-anchor:middle;dominant-baseline:central;fill:#1f2937}
+/* teacher */
+.tabs{display:flex;gap:.3rem}
+.tabs button{flex:1;padding:.4rem 0}
+.tabs button[aria-pressed=true]{background:var(--navy);color:#fff;border-color:var(--navy)}
+#bigCmd{font-size:1.35rem;font-weight:700;line-height:1.3;background:#fef9c3;border-radius:.6rem;padding:.8rem;min-height:4.5rem}
+#cmdList{margin:0;padding-left:1.4rem;display:flex;flex-direction:column;gap:.45rem}
+#cmdList li{cursor:pointer;font-size:.92rem}
+#cmdList li.cur{font-weight:700}
+#cmdList .ic{display:inline-block;width:1.2em;font-weight:800}
+#cmdList ul{margin:.15rem 0 0;padding-left:1rem;font-size:.8rem;color:var(--muted);font-weight:400}
+.l0 .ic{color:#15803d}.l1 .ic{color:#1d4ed8}.l2 .ic{color:#b45309}.l3 .ic{color:#b91c1c}
+.l2 ul,.l3 ul{color:#7c2d12}
+#roadInputs{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
+#roadInputs label{font-weight:500;font-size:.8rem}
+#picked{font-size:1.6rem;font-weight:800;text-align:center;min-height:2rem}
+details summary{cursor:pointer;font-weight:700}
+details[open] summary{margin-bottom:.5rem}
+/* present + timer */
+#pName{font-size:1.5rem}
+.guide ul{margin:.2rem 0 .6rem;padding-left:1.1rem;font-size:.92rem}
+.vocab{display:flex;flex-wrap:wrap;gap:.3rem}
+.vocab span{background:#e0e7ff;border-radius:1rem;padding:.1rem .6rem;font-size:.85rem}
+#timerBox{border:2px solid var(--line);border-radius:.8rem;padding:.7rem}
+#tDisp{font-size:3rem;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+#timerBox.warn{border-color:#f59e0b;background:#fffbeb}
+#timerBox.warn #tDisp{color:#b45309;animation:pulse 1s infinite}
+#timerBox.done #tDisp{color:#b91c1c}
+@keyframes pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){#timerBox.warn #tDisp{animation:none}}
+/* overlay */
+#overlay{position:fixed;inset:0;background:#0f172acc;display:grid;place-items:center;z-index:40;padding:1rem}
+#ovBox{background:#fff;border-radius:1rem;padding:2rem;text-align:center;max-width:34rem}
+#ovBox .big{font-size:7rem;font-weight:800;line-height:1;color:var(--navy)}
+#ovBox .ready{font-size:1.7rem;font-weight:800;color:var(--navy);margin:0 0 1.2rem}
+#ovBox button{margin:.2rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏙️ Build the City</h1>
+  <span id="roundTag"></span>
+  <button type="button" id="modeBtn" aria-pressed="false">👩‍🏫 Teacher</button>
+</header>
+<main>
+  <div id="mapWrap">
+    <svg id="map" role="img" aria-label="City map with named roads"></svg>
+    <span id="lockTag">🔒 Map locked</span>
+  </div>
+  <aside>
+    <!-- STUDENT -->
+    <section id="studentPanel">
+      <label>Your name <input id="name" maxlength="40" autocomplete="off" placeholder="Type your name"></label>
+      <label>Round <select id="roundSel"></select></label>
+      <p class="hint">Listen to your teacher. Drag a landmark onto the map, or tap it and then tap a spot. Drag it back to the list to remove it.</p>
+      <div class="row"><button type="button" id="cdBtn" class="primary">⏱️ Start 10-second countdown</button></div>
+      <p id="lockNote" class="hint">🔒 Your map is locked. Present your city when your teacher calls you.</p>
+      <div class="row">
+        <button type="button" id="presentBtn">🎤 Present my city</button>
+        <button type="button" id="clearBtn">Clear map</button>
+        <button type="button" id="nextRoundBtn">Next round ▶</button>
+      </div>
+    </section>
+
+    <!-- TEACHER -->
+    <section id="teacherPanel">
+      <div class="tabs" id="tTabs" role="group" aria-label="Round"></div>
+      <h2 id="tTitle"></h2>
+      <div class="live liveWrap">
+        <div id="bigCmd" aria-live="polite"></div>
+        <div class="row"><button type="button" id="prevCmd">◀ Back</button><button type="button" id="nextCmd" class="primary">Next command ▶</button></div>
+        <div class="row"><button type="button" id="tCd">⏱️ Start 10-second countdown</button></div>
+        <p class="hint">Students press their own countdown button when you say “Go!”.</p>
+        <h3>Answer reveal</h3>
+        <div class="row"><button type="button" id="revNext">Reveal next</button><button type="button" id="revAll">Show answer map</button><button type="button" id="revHide">Hide</button></div>
+        <p class="hint" id="revInfo"></p>
+      </div>
+      <h3>Commands and checks</h3>
+      <p class="hint">✓ one clear answer · ℹ open answer · ⚠ unclear · ✖ contradiction</p>
+      <ol id="cmdList"></ol>
+      <div class="row"><button type="button" id="editBtn">✏️ Edit round, roads and answers</button></div>
+      <div id="editPanel" style="flex-direction:column;gap:.6rem">
+        <label>Round title <input id="eTitle" maxlength="40"></label>
+        <label>Commands (one per line) <textarea id="eCmds" rows="9"></textarea></label>
+        <p class="hint">Drag landmarks on the map to set the answer spot for each command. The checks above update as you type.</p>
+        <details><summary>Road names</summary>
+          <p class="hint">Renaming a road also updates it in every command.</p>
+          <div id="roadInputs"></div>
+          <button type="button" id="linkBtn">🔗 Copy student link with these road names</button>
+        </details>
+        <div class="row"><button type="button" id="resetRound">Reset this round</button><button type="button" id="doneEdit" class="primary">Done editing</button></div>
+      </div>
+      <details class="live"><summary>Pick a student</summary>
+        <label>Class list (one name per line) <textarea id="cls" rows="5"></textarea></label>
+        <button type="button" id="pickBtn">🎲 Pick a student</button>
+        <div id="picked" aria-live="polite"></div>
+        <p class="hint" id="pickNote"></p>
+      </details>
+    </section>
+
+    <!-- PRESENTATION -->
+    <section id="presentPanel">
+      <h2 id="pName"></h2>
+      <p class="hint" id="pRound"></p>
+      <details class="guide" open><summary>Speaking guide (optional)</summary>
+        <p class="hint">Use your own words. These are only reminders.</p>
+        <strong>Describe your city</strong>
+        <ul>
+          <li>The museum is at the center of the city.</li>
+          <li>The bakery is next to the museum.</li>
+          <li>The park is across from the bakery.</li>
+          <li>The library is between the museum and the hospital.</li>
+          <li>The school is on the corner of Main Street and School Street.</li>
+        </ul>
+        <strong>Give someone directions</strong>
+        <ul>
+          <li>Start at the museum and go straight along Main Street.</li>
+          <li>Turn left onto Maple Avenue.</li>
+          <li>The bank is on your right.</li>
+          <li>The train station is far from the museum.</li>
+        </ul>
+        <div class="vocab"><span>next to</span><span>across from</span><span>between</span><span>on the corner of</span><span>near</span><span>far from</span><span>go straight</span><span>turn left</span><span>turn right</span></div>
+      </details>
+      <button type="button" id="backBtn">◀ Back to map</button>
+    </section>
+
+    <section id="traySec">
+      <h3>Landmarks</h3>
+      <div id="tray" aria-label="Landmarks"></div>
+    </section>
+
+    <section id="timerBox" aria-label="Speaking timer">
+      <h3 style="margin:0">🎤 Speaking timer</h3>
+      <div id="tDisp" aria-live="off">1:00</div>
+      <div class="row">
+        <select id="tDur" aria-label="Speaking time" style="flex:1"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="90">90 s</option><option value="120">120 s</option></select>
+        <button type="button" id="tStart" class="primary">Start</button>
+      </div>
+      <div class="row"><button type="button" id="tReset">Reset</button><button type="button" id="tAdd">+15 s</button></div>
+    </section>
+  </aside>
+</main>
+<div id="overlay" hidden><div id="ovBox" role="dialog" aria-modal="true"></div></div>
+
+<script id="logic">
+/* ---- City model and direction checker (no DOM) ---- */
+const LOT=60, ROAD=44, NC=14, RIVER=70;
+// L = a row/column of lots, R = a road
+function axis(p){let a=0;const cells=[],roads=[];for(let i=0;i<p.length;i++){if(p[i]==='R'){roads.push(a+ROAD/2);a+=ROAD}else{cells.push({mid:a+LOT/2,before:p[i-1]==='R'?roads.length-1:-1,after:p[i+1]==='R'?roads.length:-1,blk:roads.length});a+=LOT}}return{cells,roads,len:a}}
+const AX=axis('LRLLLRLLLRLLLRLLLRL'), AY=axis('LRLLRLLRLLRLLRL');
+const W=AX.len, H0=AY.len, H=H0+RIVER;
+// roads 0-4 run north-south (left to right), 5-9 run east-west (top to bottom)
+const ROADS=[...AX.roads.map(p=>({axis:'v',pos:p})),...AY.roads.map(p=>({axis:'h',pos:p}))];
+const DEF_ROADS=['Maple Avenue','School Street','Central Avenue','Museum Avenue','Hospital Street','Station Road','Market Street','Main Street','Park Road','Riverside Road'];
+const LOTS=[];
+AY.cells.forEach((cy,r)=>AX.cells.forEach((cx,c)=>{const l={id:r*NC+c,c,r,x:cx.mid,y:cy.mid,bx:cx.blk,by:cy.blk,L:cx.before,R:cx.after,T:cy.before<0?-1:cy.before+5,B:cy.after<0?-1:cy.after+5};l.roads=[l.L,l.R,l.T,l.B].filter(v=>v>=0);LOTS.push(l)}));
+const at=(c,r)=>r*NC+c;
+const LM=[['museum','🏛️','Museum'],['bakery','🥐','Bakery'],['park','🌳','Park'],['school','🏫','School'],['library','📚','Library'],['hospital','🏥','Hospital'],['bank','🏦','Bank'],['station','🚉','Train Station'],['cafe','☕','Café'],['supermarket','🛒','Supermarket'],['postoffice','🏤','Post Office'],['police','🚓','Police Station'],['fire','🚒','Fire Station'],['restaurant','🍽️','Restaurant'],['cinema','🎬','Cinema'],['hotel','🏨','Hotel'],['pharmacy','💊','Pharmacy'],['church','⛪','Church'],['zoo','🦁','Zoo'],['playground','🎠','Playground'],['stadium','🏟️','Stadium'],['mall','🛍️','Shopping Mall'],['toyshop','🧸','Toy Shop']];
+const LMK=Object.fromEntries(LM.map(l=>[l[0],l]));
+const DEF_ROUNDS=[
+ {title:'Around the Museum',cmds:[
+  'Place the museum at the center of the city, on Main Street.',
+  'Place the bakery next to the museum, on Park Road.',
+  'Place the park across from the bakery, on Park Road.',
+  'Place the school on the corner of Main Street and School Street.',
+  'Place the library between the school and the museum.',
+  'The hospital is across from the park, on Park Road.'],
+  answer:{museum:at(6,5),bakery:at(6,6),park:at(6,7),school:at(4,5),library:at(5,5),hospital:at(7,7)}},
+ {title:'Follow the Directions',cmds:[
+  'Place the museum at the center of the city, on Main Street.',
+  'Starting at the museum, go straight along Main Street towards Hospital Street.',
+  'Turn left onto Museum Avenue.',
+  'The bank is on your right, on the corner of Museum Avenue and Market Street.',
+  'Place the café next to the bank.',
+  'Place the train station far from the museum, near Station Road.'],
+  answer:{museum:at(7,4),bank:at(10,3),cafe:at(11,3),station:at(1,0)}},
+ {title:'Market Day',cmds:[
+  'Place the supermarket on the corner of Market Street and Central Avenue.',
+  'Place the bakery next to the supermarket, on Market Street.',
+  'Place the bank across Central Avenue from the supermarket.',
+  'Place the post office next to the bank, on Central Avenue.',
+  'Starting at the supermarket, go straight along Market Street towards Maple Avenue.',
+  'Turn right onto School Street.',
+  'The library is on your left.'],
+  answer:{supermarket:at(6,3),bakery:at(5,3),bank:at(7,3),postoffice:at(7,4),library:at(3,2)}},
+ {title:'Park and Hospital',cmds:[
+  'Place the park on the corner of Park Road and Central Avenue.',
+  'Place the hospital across Park Road from the park.',
+  'Place the pharmacy next to the hospital.',
+  'Place the fire station far from the hospital, on the corner of Station Road and Maple Avenue.',
+  'Place the zoo near the park, on Museum Avenue.',
+  'Starting at the hospital, go straight along Park Road towards Maple Avenue.',
+  'Turn left onto School Street.',
+  'The cinema is on your right.'],
+  answer:{park:at(7,6),hospital:at(7,7),pharmacy:at(8,7),fire:at(1,1),zoo:at(9,6),cinema:at(3,8)}},
+ {title:'Across the City',cmds:[
+  'Place the train station on the corner of Station Road and Central Avenue.',
+  'Place the hotel across Station Road from the train station.',
+  'Place the restaurant next to the train station, on Station Road.',
+  'Place the museum at the center of the city.',
+  'Place the church far from the train station, near Riverside Road.',
+  'Starting at the train station, go straight along Central Avenue towards Riverside Road.',
+  'Turn left onto Main Street.',
+  'The bank is on your left, on the corner of Main Street and Museum Avenue.',
+  'Go straight along Main Street and turn right onto Hospital Street.',
+  'The hospital is on your left, on the corner of Hospital Street and Park Road.'],
+  answer:{station:at(7,1),hotel:at(7,0),restaurant:at(8,1),museum:at(6,4),church:at(12,9),bank:at(10,4),hospital:at(13,6)}}
+];
+
+const norm=s=>' '+String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()+' ';
+const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+// Road names become #i#, landmark names become @i@, articles are dropped.
+function tokenize(text,roads){
+  let t=norm(text);
+  const sub=(names,mk)=>names.map((n,i)=>[norm(n).trim(),i]).filter(x=>x[0]).sort((a,b)=>b[0].length-a[0].length)
+    .forEach(([n,i])=>{t=t.replace(new RegExp(' '+esc(n)+'(?= )','g'),' '+mk(i))});
+  sub(roads,i=>'#'+i+'#'); sub(LM.map(l=>l[2]),i=>'@'+i+'@');
+  return t.replace(/ (?:the|a|an)(?= )/g,'');
+}
+const VEC={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0]};
+const rot=(h,d)=>d==='right'?[-h[1],h[0]]:[h[1],-h[0]];
+const touch=(l,i)=>l.roads.includes(i);
+const dist=(a,b)=>Math.abs(a.c-b.c)+Math.abs(a.r-b.r);
+const nextTo=(a,b)=>a.bx===b.bx&&a.by===b.by&&dist(a,b)===1;
+// road index between two facing lots, or -1
+function across(a,b){
+  if(a.r===b.r){if(a.c+1===b.c&&a.R>=0&&a.R===b.L)return a.R;if(b.c+1===a.c&&b.R>=0&&b.R===a.L)return b.R}
+  if(a.c===b.c){if(a.r+1===b.r&&a.B>=0&&a.B===b.T)return a.B;if(b.r+1===a.r&&b.B>=0&&b.B===a.T)return b.B}
+  return -1;
+}
+function between(l,p,q){
+  if(p.r===q.r||p.c===q.c)return(p.r===q.r&&l.r===p.r&&(l.c-p.c)*(l.c-q.c)<0)||(p.c===q.c&&l.c===p.c&&(l.r-p.r)*(l.r-q.r)<0);
+  return(l.c-p.c)*(l.c-q.c)<=0&&(l.r-p.r)*(l.r-q.r)<=0&&l.id!==p.id&&l.id!==q.id;
+}
+const nearRoad=(l,i)=>touch(l,i)||Math.abs((ROADS[i].axis==='v'?l.x:l.y)-ROADS[i].pos)<=LOT*1.5+ROAD/2+1;
+
+// Checks every command of a round against its answer map.
+// lvl: 0 clear, 1 open answer (info), 2 unclear, 3 contradiction
+function analyze(round,roads){
+  const rn=i=>roads[i],pos={},out=[];
+  let st={p:null,road:-1,head:null};
+  for(const cmd of round.cmds){
+    const t=tokenize(cmd,roads),notes=[],cons=[],refs=new Set();let lvl=0;
+    const flag=(l,m)=>{notes.push([l,m]);lvl=Math.max(lvl,l)};
+    const all=re=>[...t.matchAll(re)];
+    const lm=k=>{refs.add(k);const key=LM[k][0];if(pos[key]==null){flag(2,round.answer[key]==null?`The ${LM[k][2]} is not on the answer map.`:`The ${LM[k][2]} is used before it is placed. Move its command earlier.`);return null}return LOTS[pos[key]]};
+    const cue=road=>{
+      const c=t.match(/\b(north|south|east|west)\b/);if(c)return VEC[c[1]];
+      const m=t.match(/toward(?:s)? (?:#(\d)#|@(\d+)@)/);if(!m||!st.p)return null;
+      const v=ROADS[road].axis==='v';let target;
+      if(m[1]!=null){const T=ROADS[+m[1]];if(T.axis===ROADS[road].axis)return null;target=T.pos}
+      else{const o=lm(+m[2]);if(!o)return null;target=v?o.y:o.x}
+      const d=Math.sign(target-(v?st.p.y:st.p.x));return d?(v?[0,d]:[d,0]):null;
+    };
+    // route steps, in sentence order
+    const ops=[...all(/start(?:ing)? (?:at|from) @(\d+)@/g).map(m=>[m.index,'start',+m[1]]),
+      ...all(/(?:along|down|up) #(\d)#/g).map(m=>[m.index,'along',+m[1]]),
+      ...all(/turn (left|right) (?:onto|into|on) #(\d)#/g).map(m=>[m.index,'turn',+m[2],m[1]])].sort((a,b)=>a[0]-b[0]);
+    for(const [,op,a,dir] of ops){
+      if(op==='start'){const o=lm(a);st={p:o?{x:o.x,y:o.y,lot:o}:null,road:-1,head:null}}
+      else if(op==='along'){
+        if(st.road===a){st.head=cue(a)||st.head;continue}
+        if(st.road>=0)flag(2,`You are on ${rn(st.road)}. Say “turn left/right onto ${rn(a)}”.`);
+        else if(st.p&&st.p.lot&&!touch(st.p.lot,a))flag(3,`The starting place is not on ${rn(a)}.`);
+        st.road=a;
+        if(st.p)st.p={x:ROADS[a].axis==='v'?ROADS[a].pos:st.p.x,y:ROADS[a].axis==='h'?ROADS[a].pos:st.p.y};
+        st.head=cue(a);
+      }else{
+        if(st.road<0){flag(3,`Say which road to go along before “turn ${dir}”.`);continue}
+        if(ROADS[a].axis===ROADS[st.road].axis){flag(3,`${rn(a)} does not cross ${rn(st.road)}.`);continue}
+        const I=ROADS[a].axis==='v'?{x:ROADS[a].pos,y:ROADS[st.road].pos}:{x:ROADS[st.road].pos,y:ROADS[a].pos};
+        if(!st.head)flag(2,`“Turn ${dir}” is unclear: the way along ${rn(st.road)} is not given. Add “towards …”.`);
+        else if(st.p&&(I.x-st.p.x)*st.head[0]+(I.y-st.p.y)*st.head[1]<=0)flag(3,`${rn(a)} is behind you, so you cannot turn onto it.`);
+        st={p:I,road:a,head:st.head?rot(st.head,dir):null};
+      }
+    }
+    const side=t.match(/on your (left|right)/);
+    if(side){
+      if(st.road<0)flag(3,`Give a road to go along before “on your ${side[1]}”.`);
+      else{const r=st.road,p=st.p,h=st.head;
+        if(!h||!p){flag(2,`“On your ${side[1]}” is unclear: the direction of travel is not given.`);cons.push({label:`on ${rn(r)}`,test:l=>touch(l,r)})}
+        else{const s=rot(h,side[1]);cons.push({label:`on your ${side[1]} along ${rn(r)}`,test:l=>touch(l,r)&&(l.x-p.x)*s[0]+(l.y-p.y)*s[1]>0&&(l.x-p.x)*h[0]+(l.y-p.y)*h[1]>0})}}
+    }
+    // position words
+    if(/\bcent(?:er|re) of (?:city|town)\b|\b(?:city|town) cent(?:er|re)\b|\bmiddle of (?:city|town)\b/.test(t))
+      cons.push({label:'at the center of the city',test:l=>touch(l,2)&&touch(l,7)});
+    for(const m of all(/corner of #(\d)# and #(\d)#/g)){const a=+m[1],b=+m[2];
+      if(ROADS[a].axis===ROADS[b].axis)flag(3,`${rn(a)} and ${rn(b)} never meet, so they have no corner.`);
+      cons.push({label:`on the corner of ${rn(a)} and ${rn(b)}`,test:l=>touch(l,a)&&touch(l,b)})}
+    for(const m of all(/across #(\d)# from @(\d+)@/g)){const r=+m[1],o=lm(+m[2]);if(o)cons.push({label:`across ${rn(r)} from the ${LM[+m[2]][2]}`,test:l=>across(l,o)===r})}
+    for(const m of all(/across from @(\d+)@/g)){const o=lm(+m[1]);if(o)cons.push({label:`across from the ${LM[+m[1]][2]}`,test:l=>across(l,o)>=0})}
+    for(const m of all(/next to @(\d+)@/g)){const o=lm(+m[1]);if(o)cons.push({label:`next to the ${LM[+m[1]][2]}`,test:l=>nextTo(l,o)})}
+    for(const m of all(/between @(\d+)@ and @(\d+)@/g)){const p=lm(+m[1]),q=lm(+m[2]),A=LM[+m[1]][2],B=LM[+m[2]][2];
+      if(p&&q){if(p.r!==q.r&&p.c!==q.c)flag(2,`The ${A} and the ${B} are not on one straight line, so “between” is loose.`);cons.push({label:`between the ${A} and the ${B}`,test:l=>between(l,p,q)})}}
+    for(const m of all(/far from @(\d+)@/g)){const o=lm(+m[1]);if(o)cons.push({label:`far from the ${LM[+m[1]][2]}`,test:l=>dist(l,o)>=7})}
+    for(const m of all(/near @(\d+)@/g)){const o=lm(+m[1]);if(o)cons.push({label:`near the ${LM[+m[1]][2]}`,test:l=>dist(l,o)<=3})}
+    for(const m of all(/near #(\d)#/g)){const r=+m[1];cons.push({label:`near ${rn(r)}`,test:l=>nearRoad(l,r)})}
+    for(const m of all(/\bon #(\d)#/g)){const r=+m[1];cons.push({label:`on ${rn(r)}`,test:l=>touch(l,r)})}
+    // the landmark being placed = first one that is not a reference point
+    let subj=null;for(const m of all(/@(\d+)@/g))if(!refs.has(+m[1])){subj=+m[1];break}
+    if(subj!=null){
+      const key=LM[subj][0],name=LM[subj][2],exp=round.answer[key];
+      const taken=new Set(Object.entries(pos).filter(([k])=>k!==key).map(([,v])=>v));
+      const cand=LOTS.filter(l=>!taken.has(l.id)&&cons.every(c=>c.test(l)));
+      if(!cons.length)flag(1,'No position words, so any spot is fine.');
+      if(!cand.length)flag(3,'No spot fits all of these directions. They contradict each other.');
+      else if(exp==null)flag(2,`The ${name} has no answer spot yet. Use Edit and drag it onto the map.`);
+      else if(!cand.some(l=>l.id===exp)){const bad=cons.find(c=>!c.test(LOTS[exp]));flag(3,bad?`On the answer map the ${name} is not ${bad.label}.`:`The answer spot for the ${name} is already used.`)}
+      else if(cand.length>1&&cons.length)flag(1,`Open answer: ${cand.length} spots fit. Accept any of them.`);
+      if(exp!=null)pos[key]=exp;
+      if(!lvl)notes.push([0,'One clear answer.']);
+    }else if(!ops.length&&!side)flag(1,'No landmark in this sentence.');
+    else if(!lvl)notes.push([0,'The route is clear.']);
+    out.push({lvl,notes,subj:subj==null?null:LM[subj][0],roads:[...new Set(all(/#(\d)#/g).map(m=>+m[1]))]});
+  }
+  return out;
+}
+</script>
+
+<script>
+/* ---- App ---- */
+const $=s=>document.querySelector(s);
+const NS='http://www.w3.org/2000/svg';
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e}
+const clone=o=>JSON.parse(JSON.stringify(o));
+const KEY='buildTheCity.v1';
+const S={teacher:false,editing:false,present:false,round:0,step:0,reveal:0,name:'',placed:{},locked:false,roads:[...DEF_ROADS],rounds:clone(DEF_ROUNDS),cls:''};
+let sel=null;
+const svg=$('#map');
+
+function save(){try{localStorage.setItem(KEY,JSON.stringify({teacher:S.teacher,round:S.round,name:S.name,placed:S.placed,locked:S.locked,roads:S.roads,rounds:S.rounds,cls:S.cls}))}catch(e){}}
+function load(){
+  try{const d=JSON.parse(localStorage.getItem(KEY)||'null');if(d){
+    for(const k of ['teacher','name','placed','locked','cls'])if(d[k]!=null)S[k]=d[k];
+    if(d.round>=0&&d.round<5)S.round=d.round;
+    if(Array.isArray(d.roads)&&d.roads.length===10)S.roads=d.roads;
+    if(Array.isArray(d.rounds)&&d.rounds.length===5)S.rounds=d.rounds;}}catch(e){}
+  // road names shared by the teacher's student link
+  try{const m=location.hash.match(/roads=([^&]+)/);if(m){const r=JSON.parse(decodeURIComponent(m[1]));
+    if(Array.isArray(r)&&r.length===10&&r.every(x=>typeof x==='string'&&x.trim()&&x.length<=30))r.forEach((v,i)=>renameText(i,v.trim()))}}catch(e){}
+}
+const analysis=()=>analyze(S.rounds[S.round],S.roads);
+const cur=()=>S.editing?S.rounds[S.round].answer:S.placed;
+const canEdit=()=>S.teacher?S.editing:!S.locked&&!S.present;
+
+/* ---- static map ---- */
+function drawStatic(){
+  svg.replaceChildren();svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const defs=el('defs',{},svg);
+  el('rect',{width:12,height:4,fill:'#fff'},el('pattern',{id:'zh',width:12,height:8,patternUnits:'userSpaceOnUse'},defs));
+  el('rect',{width:4,height:12,fill:'#fff'},el('pattern',{id:'zv',width:8,height:12,patternUnits:'userSpaceOnUse'},defs));
+  el('rect',{width:W,height:H0,fill:'#cfe3b4'},svg);
+  const blocks={};for(const l of LOTS)(blocks[l.bx+','+l.by]=blocks[l.bx+','+l.by]||[]).push(l);
+  for(const k in blocks){const ls=blocks[k],xs=ls.map(l=>l.x),ys=ls.map(l=>l.y);
+    const x0=Math.min(...xs)-LOT/2,y0=Math.min(...ys)-LOT/2;
+    el('rect',{x:x0+2,y:y0+2,width:Math.max(...xs)+LOT/2-x0-4,height:Math.max(...ys)+LOT/2-y0-4,rx:6,fill:'#e6e0cf'},svg)}
+  const lg=el('g',{id:'lots'},svg);
+  for(const l of LOTS)el('rect',{x:l.x-LOT/2+5,y:l.y-LOT/2+5,width:LOT-10,height:LOT-10,rx:5,class:'lot','data-id':l.id},lg);
+  const rg=el('g',{},svg),gray='#4b5563';
+  for(const r of ROADS)el('rect',r.axis==='v'?{x:r.pos-ROAD/2,y:0,width:ROAD,height:H0,fill:gray}:{x:0,y:r.pos-ROAD/2,width:W,height:ROAD,fill:gray},rg);
+  for(const r of ROADS)el('line',r.axis==='v'?{x1:r.pos,y1:0,x2:r.pos,y2:H0,class:'mid'}:{x1:0,y1:r.pos,x2:W,y2:r.pos,class:'mid'},rg);
+  const g=ROAD/2,z=12,w=ROAD-8;
+  for(const vx of AX.roads)for(const hy of AY.roads){
+    el('rect',{x:vx-g,y:hy-g,width:ROAD,height:ROAD,fill:gray},rg);
+    // zebra crossings on all four sides of the intersection
+    for(const [x,y,ww,hh,p] of [[vx-g-z-2,hy-w/2,z,w,'zh'],[vx+g+2,hy-w/2,z,w,'zh'],[vx-w/2,hy-g-z-2,w,z,'zv'],[vx-w/2,hy+g+2,w,z,'zv']]){
+      el('rect',{x,y,width:ww,height:hh,fill:gray},rg);el('rect',{x,y,width:ww,height:hh,fill:`url(#${p})`},rg)}
+  }
+  el('g',{id:'hl'},svg);
+  const tg=el('g',{class:'rlabels'},svg);
+  ROADS.forEach((r,i)=>{const other=r.axis==='v'?AY.roads:AX.roads;
+    for(const k of [0,2]){const m=(other[k]+other[k+1])/2;
+      const t=el('text',r.axis==='v'?{x:r.pos,y:m,transform:`rotate(-90 ${r.pos} ${m})`,class:'v'}:{x:m,y:r.pos},tg);t.textContent=S.roads[i]}});
+  // river and compass
+  el('rect',{x:0,y:H0,width:W,height:RIVER,fill:'#8ecae6'},svg);
+  for(let x=30;x<W-140;x+=110)el('path',{d:`M${x} ${H0+38} q14 -9 28 0 t28 0`,fill:'none',stroke:'#fff','stroke-width':2,opacity:.8},svg);
+  const rv=el('text',{x:W/2,y:H0+RIVER/2,'text-anchor':'middle','dominant-baseline':'central','font-size':14,'font-style':'italic',fill:'#1e3a5f'},svg);rv.textContent='~ River ~';
+  const cg=el('g',{class:'compass',transform:`translate(${W-46} ${H0+RIVER/2})`},svg);
+  el('circle',{r:32,fill:'#fff',stroke:'#1f2937','stroke-width':2},cg);
+  el('path',{d:'M0 -15 L5 0 L-5 0Z',fill:'#dc2626'},cg);el('path',{d:'M0 15 L5 0 L-5 0Z',fill:'#475569'},cg);
+  for(const [s,x,y] of [['N',0,-24],['S',0,24],['E',24,0],['W',-24,0]]){const t=el('text',{x,y},cg);t.textContent=s}
+  el('g',{id:'lms'},svg);
+}
+
+/* ---- dynamic drawing ---- */
+function viewMap(){
+  if(S.teacher&&!S.editing){const R=S.rounds[S.round],m={},b={};
+    analysis().slice(0,S.reveal).forEach((r,i)=>{if(r.subj&&R.answer[r.subj]!=null){m[r.subj]=R.answer[r.subj];b[r.subj]=i+1}});return{map:m,badges:b}}
+  return{map:cur(),badges:null};
+}
+function drawLandmarks(){
+  const g=$('#lms');g.replaceChildren();const{map,badges}=viewMap();
+  for(const key in map){const l=LOTS[map[key]],L=LMK[key];if(!l||!L)continue;
+    const gg=el('g',{class:'lm'+(badges?' ans':'')+(sel===key?' sel':''),transform:`translate(${l.x} ${l.y})`,'data-k':key},g);
+    el('rect',{x:-26,y:-26,width:52,height:52,rx:8},gg);
+    el('text',{y:-5,class:'emo'},gg).textContent=L[1];
+    el('text',{y:20,class:'nm'},gg).textContent=L[2];
+    if(badges){const b=el('g',{class:'badge',transform:'translate(23 -23)'},gg);el('circle',{r:10},b);el('text',{dy:'.35em'},b).textContent=badges[key]}}
+  const hl=$('#hl');hl.replaceChildren();
+  if(S.teacher&&!S.editing&&S.reveal>0){const r=analysis()[S.reveal-1];
+    if(r)for(const i of r.roads){const R=ROADS[i];el('rect',R.axis==='v'?{x:R.pos-ROAD/2,y:0,width:ROAD,height:H0}:{x:0,y:R.pos-ROAD/2,width:W,height:ROAD},hl)}}
+}
+function drawTray(){
+  const tr=$('#tray'),m=cur();tr.replaceChildren();
+  for(const [k,e,n] of LM){const b=document.createElement('button');b.type='button';b.dataset.k=k;
+    b.className='chip'+(m[k]!=null?' on':'')+(sel===k?' sel':'');b.setAttribute('aria-label',n+(m[k]!=null?' (on the map)':''));
+    const a=document.createElement('span');a.className='emo';a.textContent=e;const c=document.createElement('span');c.textContent=n;b.append(a,c);tr.append(b)}
+}
+function drawTeacher(){
+  const R=S.rounds[S.round],res=analysis(),n=R.cmds.length;
+  S.step=Math.max(0,Math.min(S.step,n-1));S.reveal=Math.min(S.reveal,n);
+  const tabs=$('#tTabs');tabs.replaceChildren();
+  S.rounds.forEach((_,i)=>{const b=document.createElement('button');b.type='button';b.textContent=i+1;b.setAttribute('aria-pressed',i===S.round);b.onclick=()=>{S.round=i;S.step=0;S.reveal=0;fillEditor();save();render()};tabs.append(b)});
+  $('#tTitle').textContent=`Round ${S.round+1}: ${R.title}`;
+  $('#bigCmd').textContent=n?`${S.step+1}. ${R.cmds[S.step]}`:'No commands yet. Use Edit to add some.';
+  $('#revInfo').textContent=`Showing ${S.reveal} of ${n} answers.`;
+  const ol=$('#cmdList');ol.replaceChildren();
+  R.cmds.forEach((c,i)=>{const r=res[i],li=document.createElement('li');li.className='l'+r.lvl+(i===S.step?' cur':'');
+    const ic=document.createElement('span');ic.className='ic';ic.textContent='✓ℹ⚠✖'[r.lvl];li.append(ic,c);
+    const ul=document.createElement('ul');for(const [,m] of r.notes){const x=document.createElement('li');x.textContent=m;ul.append(x)}li.append(ul);
+    li.onclick=()=>{S.step=i;render()};ol.append(li)});
+  $('#editBtn').hidden=S.editing;
+}
+function fillEditor(){
+  const R=S.rounds[S.round];$('#eTitle').value=R.title;$('#eCmds').value=R.cmds.join('\n');
+  document.querySelectorAll('#roadInputs input').forEach((inp,i)=>inp.value=S.roads[i]);
+}
+function render(){
+  const b=document.body.classList;
+  b.toggle('teacher',S.teacher);b.toggle('editing',S.teacher&&S.editing);b.toggle('present',S.present&&!S.teacher);
+  b.toggle('locked',S.locked&&!S.teacher);b.toggle('picking',!!sel);
+  $('#modeBtn').setAttribute('aria-pressed',S.teacher);
+  $('#roundTag').textContent=`Round ${S.round+1}: ${S.rounds[S.round].title}`;
+  drawLandmarks();drawTray();
+  $('#roundSel').replaceChildren(...S.rounds.map((R,i)=>new Option(`Round ${i+1}: ${R.title}`,i)));$('#roundSel').value=S.round;
+  if(document.activeElement!==$('#name'))$('#name').value=S.name;
+  $('#cdBtn').disabled=S.locked;$('#lockNote').hidden=!S.locked;$('#presentBtn').hidden=!S.locked;
+  $('#clearBtn').hidden=S.locked;$('#nextRoundBtn').hidden=!S.locked;
+  $('#pName').textContent=S.name.trim()?`${S.name.trim()}’s City`:'My City';
+  $('#pRound').textContent=`Round ${S.round+1}: ${S.rounds[S.round].title}`;
+  if(S.teacher)drawTeacher();
+}
+
+/* ---- placing landmarks ---- */
+function lotAt(cx,cy){
+  const m=svg.getScreenCTM();if(!m)return null;const p=new DOMPoint(cx,cy).matrixTransform(m.inverse());
+  if(p.x<0||p.y<0||p.x>W||p.y>H0)return null;
+  let best=null,bd=Infinity;for(const l of LOTS){const d=(l.x-p.x)**2+(l.y-p.y)**2;if(d<bd){bd=d;best=l}}return best;
+}
+function place(key,id){
+  const m=cur(),prev=m[key],occ=Object.keys(m).find(k=>m[k]===id&&k!==key);
+  if(occ){if(prev!=null)m[occ]=prev;else delete m[occ]}   // swap with whatever was there
+  m[key]=id;sel=null;save();render();
+}
+function unplace(key){delete cur()[key];sel=null;save();render()}
+function select(k){sel=k;render()}
+let hot=null;
+function setHot(l){if(hot)hot.classList.remove('hot');hot=l?svg.querySelector(`.lot[data-id="${l.id}"]`):null;if(hot)hot.classList.add('hot')}
+function startDrag(e,key){
+  if(!canEdit()||e.button>0)return;e.preventDefault();
+  const sx=e.clientX,sy=e.clientY;let ghost=null;
+  const mv=ev=>{
+    if(!ghost){if(Math.hypot(ev.clientX-sx,ev.clientY-sy)<6)return;ghost=document.createElement('div');ghost.className='ghost';ghost.textContent=LMK[key][1];document.body.append(ghost)}
+    ghost.style.left=ev.clientX+'px';ghost.style.top=ev.clientY+'px';setHot(lotAt(ev.clientX,ev.clientY));
+  };
+  const up=ev=>{
+    removeEventListener('pointermove',mv);removeEventListener('pointerup',up);removeEventListener('pointercancel',up);setHot(null);
+    if(!ghost){if(ev.type==='pointerup')select(sel===key?null:key);return}
+    ghost.remove();if(ev.type==='pointercancel')return;
+    const l=lotAt(ev.clientX,ev.clientY);
+    if(l)place(key,l.id);else if($('#traySec').contains(document.elementFromPoint(ev.clientX,ev.clientY)))unplace(key);
+  };
+  addEventListener('pointermove',mv);addEventListener('pointerup',up);addEventListener('pointercancel',up);
+}
+svg.addEventListener('pointerdown',e=>{const g=e.target.closest('.lm');if(g)startDrag(e,g.dataset.k)});
+svg.addEventListener('click',e=>{if(!sel||!canEdit()||e.target.closest('.lm'))return;const l=lotAt(e.clientX,e.clientY);if(l)place(sel,l.id)});
+$('#tray').addEventListener('pointerdown',e=>{const c=e.target.closest('.chip');if(c)startDrag(e,c.dataset.k)});
+$('#tray').addEventListener('click',e=>{const c=e.target.closest('.chip');if(c&&e.detail===0&&canEdit())select(sel===c.dataset.k?null:c.dataset.k)});// keyboard
+
+/* ---- countdown and overlay ---- */
+let cdId=null;
+function overlay(html){$('#ovBox').innerHTML=html;$('#overlay').hidden=false;const b=$('#ovBox button');if(b)b.focus()}
+function closeOverlay(){$('#overlay').hidden=true;clearInterval(cdId);cdId=null}
+function countdown(){
+  closeOverlay();let n=10;
+  overlay('<div class="big" id="cdNum">10</div><p>Finish placing your landmarks!</p><button type="button" data-act="close">Cancel</button>');
+  cdId=setInterval(()=>{n--;if(n>0){$('#cdNum').textContent=n;return}clearInterval(cdId);cdId=null;
+    if(!S.teacher){S.locked=true;sel=null;save();render()}
+    overlay('<p class="ready">Your city is ready! Time to give directions.</p>'+(S.teacher
+      ?'<button type="button" class="primary" data-act="close">OK</button>'
+      :'<button type="button" class="primary" data-act="present">🎤 Present my city</button><button type="button" data-act="close">View my map</button>'));
+  },1000);
+}
+$('#ovBox').addEventListener('click',e=>{const a=e.target.dataset.act;if(a==='close')closeOverlay();if(a==='present'){closeOverlay();setPresent(true)}});
+function setPresent(v){S.present=v;render();scrollTo(0,0)}
+
+/* ---- speaking timer (never ends the game) ---- */
+const T={dur:60,left:60,id:null};
+const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+function tShow(){$('#tDisp').textContent=T.left?fmt(T.left):'Time!';$('#timerBox').classList.toggle('warn',T.left<=10&&T.left>0);$('#timerBox').classList.toggle('done',!T.left);$('#tStart').textContent=T.id?'Pause':'Start'}
+function tStop(){clearInterval(T.id);T.id=null}
+$('#tStart').onclick=()=>{if(T.id)tStop();else if(T.left>0)T.id=setInterval(()=>{T.left--;if(T.left<=0){T.left=0;tStop()}tShow()},1000);tShow()};
+$('#tReset').onclick=()=>{tStop();T.left=T.dur;tShow()};
+$('#tAdd').onclick=()=>{T.left+=15;tShow()};
+$('#tDur').onchange=e=>{T.dur=+e.target.value;tStop();T.left=T.dur;tShow()};
+
+/* ---- student controls ---- */
+$('#name').oninput=e=>{S.name=e.target.value;save();$('#pName').textContent=S.name.trim()?`${S.name.trim()}’s City`:'My City'};
+function newRound(i){S.round=i;S.placed={};S.locked=false;S.present=false;sel=null;save();render()}
+$('#roundSel').onchange=e=>{const i=+e.target.value;if(Object.keys(S.placed).length&&!confirm('Change round? Your map will be cleared.')){e.target.value=S.round;return}newRound(i)};
+$('#cdBtn').onclick=countdown;
+$('#presentBtn').onclick=()=>setPresent(true);
+$('#backBtn').onclick=()=>setPresent(false);
+$('#clearBtn').onclick=()=>{if(confirm('Remove all landmarks from your map?')){S.placed={};sel=null;save();render()}};
+$('#nextRoundBtn').onclick=()=>{if(confirm(`Start round ${(S.round+1)%5+1}? Your map will be cleared.`))newRound((S.round+1)%5)};
+
+/* ---- teacher controls ---- */
+$('#modeBtn').onclick=()=>{S.teacher=!S.teacher;S.editing=false;S.present=false;sel=null;closeOverlay();save();render()};
+$('#prevCmd').onclick=()=>{S.step--;render()};
+$('#nextCmd').onclick=()=>{S.step++;render()};
+$('#tCd').onclick=countdown;
+$('#revNext').onclick=()=>{S.reveal++;render()};
+$('#revAll').onclick=()=>{S.reveal=S.rounds[S.round].cmds.length;render()};
+$('#revHide').onclick=()=>{S.reveal=0;render()};
+$('#editBtn').onclick=()=>{S.editing=true;sel=null;fillEditor();render()};
+$('#doneEdit').onclick=()=>{S.editing=false;sel=null;render()};
+$('#eTitle').oninput=e=>{S.rounds[S.round].title=e.target.value.slice(0,40)||'Untitled';save();render()};
+$('#eCmds').oninput=e=>{S.rounds[S.round].cmds=e.target.value.split('\n').map(s=>s.trim()).filter(Boolean);save();render()};
+$('#resetRound').onclick=()=>{if(confirm('Reset this round to the original commands and answers?')){S.rounds[S.round]=clone(DEF_ROUNDS[S.round]);fillEditor();save();render()}};
+function renameText(i,v){
+  const old=S.roads[i];if(!v||v===old)return;
+  const re=new RegExp('\\b'+esc(old)+'\\b','gi');
+  S.rounds.forEach(R=>{R.cmds=R.cmds.map(c=>c.replace(re,v))});S.roads[i]=v;
+}
+const ri=$('#roadInputs');
+S.roads.forEach((_,i)=>{const lab=document.createElement('label');lab.textContent=(i<5?'↕ North–south ':'↔ East–west ')+(i%5+1);
+  const inp=document.createElement('input');inp.maxLength=30;
+  inp.onchange=()=>{const v=inp.value.replace(/\s+/g,' ').trim();
+    if(S.roads.some((r,j)=>j!==i&&r.toLowerCase()===v.toLowerCase())){alert('Another road already has that name.');inp.value=S.roads[i];return}
+    if(!v){inp.value=S.roads[i];return}
+    renameText(i,v);save();drawStatic();fillEditor();render()};
+  lab.append(inp);ri.append(lab)});
+$('#linkBtn').onclick=async()=>{
+  const link=location.href.split('#')[0]+'#roads='+encodeURIComponent(JSON.stringify(S.roads));
+  try{await navigator.clipboard.writeText(link);$('#linkBtn').textContent='✅ Link copied';setTimeout(()=>$('#linkBtn').textContent='🔗 Copy student link with these road names',2000)}
+  catch(e){prompt('Copy this link for your students:',link)}};
+const picked=new Set();
+$('#cls').oninput=e=>{S.cls=e.target.value;save()};
+$('#pickBtn').onclick=()=>{
+  const names=S.cls.split('\n').map(s=>s.trim()).filter(Boolean);$('#pickNote').textContent='';
+  if(!names.length){$('#picked').textContent='';$('#pickNote').textContent='Add student names first.';return}
+  let left=names.filter(n=>!picked.has(n));
+  if(!left.length){picked.clear();left=names;$('#pickNote').textContent='Everyone has had a turn. Starting again.'}
+  const n=left[Math.floor(Math.random()*left.length)];picked.add(n);$('#picked').textContent=n};
+
+load();drawStatic();$('#cls').value=S.cls;fillEditor();tShow();render();
+</script>
+</body>
+</html>
