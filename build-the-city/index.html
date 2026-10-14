@@ -22,6 +22,8 @@ header button[aria-pressed=true]{background:#fff;color:var(--navy)}
 input,select,textarea{border:1px solid #b9c2cc;border-radius:.4rem;padding:.4rem .5rem;width:100%;background:#fff}
 textarea{resize:vertical}
 label{display:flex;flex-direction:column;gap:.2rem;font-weight:600;font-size:.9rem}
+label.check{flex-direction:row;align-items:center;gap:.5rem}
+label.check input{width:1.2rem;height:1.2rem}
 main{flex:1;display:flex;min-height:0}
 #mapWrap{flex:1;min-width:0;padding:.5rem;position:relative;display:flex;align-items:flex-start;justify-content:center}
 #map{width:100%;height:auto;max-height:calc(100vh - 72px);display:block;user-select:none;-webkit-user-select:none;background:#cfe3b4;border-radius:.6rem;box-shadow:0 1px 4px #0002}
@@ -140,6 +142,9 @@ details[open] summary{margin-bottom:.5rem}
         <div id="bigCmd" aria-live="polite"></div>
         <div class="row"><button type="button" id="prevCmd">◀ Back</button><button type="button" id="nextCmd" class="primary">Next command ▶</button></div>
         <div class="row"><button type="button" id="tCd">⏱️ Start 10-second countdown</button></div>
+        <label class="check"><input type="checkbox" id="timeOpt"> Show build time to students (no ranking)</label>
+        <button type="button" id="linkBtn">🔗 Copy student link</button>
+        <p class="hint">The student link carries the road names and the build-time setting.</p>
         <p class="hint">Students press their own countdown button when you say “Go!”.</p>
         <h3>Answer reveal</h3>
         <div class="row"><button type="button" id="revNext">Reveal next</button><button type="button" id="revAll">Show answer map</button><button type="button" id="revHide">Hide</button></div>
@@ -156,7 +161,7 @@ details[open] summary{margin-bottom:.5rem}
         <details><summary>Road names</summary>
           <p class="hint">Renaming a road also updates it in every command.</p>
           <div id="roadInputs"></div>
-          <button type="button" id="linkBtn">🔗 Copy student link with these road names</button>
+          <p class="hint">Then press “Copy student link” so students get the new names.</p>
         </details>
         <div class="row"><button type="button" id="resetRound">Reset this round</button><button type="button" id="doneEdit" class="primary">Done editing</button></div>
       </div>
@@ -172,6 +177,7 @@ details[open] summary{margin-bottom:.5rem}
     <section id="presentPanel">
       <h2 id="pName"></h2>
       <p class="hint" id="pRound"></p>
+      <p id="pTime"></p>
       <details class="guide" open><summary>Speaking guide (optional)</summary>
         <p class="hint">Use your own words. These are only reminders.</p>
         <strong>Describe your city</strong>
@@ -394,18 +400,19 @@ const NS='http://www.w3.org/2000/svg';
 function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e}
 const clone=o=>JSON.parse(JSON.stringify(o));
 const KEY='buildTheCity.v1';
-const S={teacher:false,editing:false,present:false,round:0,step:0,reveal:0,name:'',placed:{},locked:false,roads:[...DEF_ROADS],rounds:clone(DEF_ROUNDS),cls:''};
+const S={teacher:false,editing:false,present:false,round:0,step:0,reveal:0,name:'',placed:{},locked:false,roads:[...DEF_ROADS],rounds:clone(DEF_ROUNDS),cls:'',timeScore:false,t0:null,took:null};
 let sel=null;
 const svg=$('#map');
 
-function save(){try{localStorage.setItem(KEY,JSON.stringify({teacher:S.teacher,round:S.round,name:S.name,placed:S.placed,locked:S.locked,roads:S.roads,rounds:S.rounds,cls:S.cls}))}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({teacher:S.teacher,round:S.round,name:S.name,placed:S.placed,locked:S.locked,roads:S.roads,rounds:S.rounds,cls:S.cls,timeScore:S.timeScore,t0:S.t0,took:S.took}))}catch(e){}}
 function load(){
   try{const d=JSON.parse(localStorage.getItem(KEY)||'null');if(d){
-    for(const k of ['teacher','name','placed','locked','cls'])if(d[k]!=null)S[k]=d[k];
+    for(const k of ['teacher','name','placed','locked','cls','timeScore','t0','took'])if(d[k]!=null)S[k]=d[k];
     if(d.round>=0&&d.round<5)S.round=d.round;
     if(Array.isArray(d.roads)&&d.roads.length===10)S.roads=d.roads;
     if(Array.isArray(d.rounds)&&d.rounds.length===5)S.rounds=d.rounds;}}catch(e){}
   // road names shared by the teacher's student link
+  const tm=location.hash.match(/time=([01])/);if(tm)S.timeScore=tm[1]==='1';
   try{const m=location.hash.match(/roads=([^&]+)/);if(m){const r=JSON.parse(decodeURIComponent(m[1]));
     if(Array.isArray(r)&&r.length===10&&r.every(x=>typeof x==='string'&&x.trim()&&x.length<=30))r.forEach((v,i)=>renameText(i,v.trim()))}}catch(e){}
 }
@@ -508,6 +515,7 @@ function render(){
   $('#clearBtn').hidden=S.locked;$('#nextRoundBtn').hidden=!S.locked;
   $('#pName').textContent=S.name.trim()?`${S.name.trim()}’s City`:'My City';
   $('#pRound').textContent=`Round ${S.round+1}: ${S.rounds[S.round].title}`;
+  $('#pTime').textContent=buildTime();$('#timeOpt').checked=S.timeScore;
   if(S.teacher)drawTeacher();
 }
 
@@ -520,6 +528,7 @@ function lotAt(cx,cy){
 function place(key,id){
   const m=cur(),prev=m[key],occ=Object.keys(m).find(k=>m[k]===id&&k!==key);
   if(occ){if(prev!=null)m[occ]=prev;else delete m[occ]}   // swap with whatever was there
+  if(!S.editing&&S.t0==null)S.t0=Date.now();              // build time starts at the first landmark
   m[key]=id;sel=null;save();render();
 }
 function unplace(key){delete cur()[key];sel=null;save();render()}
@@ -551,12 +560,14 @@ $('#tray').addEventListener('click',e=>{const c=e.target.closest('.chip');if(c&&
 let cdId=null;
 function overlay(html){$('#ovBox').innerHTML=html;$('#overlay').hidden=false;const b=$('#ovBox button');if(b)b.focus()}
 function closeOverlay(){$('#overlay').hidden=true;clearInterval(cdId);cdId=null}
+const buildTime=()=>S.timeScore&&S.took!=null?`⏱️ Build time: ${fmt(S.took)}`:'';
 function countdown(){
   closeOverlay();let n=10;
+  if(!S.teacher)S.took=S.t0==null?null:Math.round((Date.now()-S.t0)/1000);
   overlay('<div class="big" id="cdNum">10</div><p>Finish placing your landmarks!</p><button type="button" data-act="close">Cancel</button>');
   cdId=setInterval(()=>{n--;if(n>0){$('#cdNum').textContent=n;return}clearInterval(cdId);cdId=null;
     if(!S.teacher){S.locked=true;sel=null;save();render()}
-    overlay('<p class="ready">Your city is ready! Time to give directions.</p>'+(S.teacher
+    overlay('<p class="ready">Your city is ready! Time to give directions.</p>'+(buildTime()&&!S.teacher?`<p>${buildTime()}</p>`:'')+(S.teacher
       ?'<button type="button" class="primary" data-act="close">OK</button>'
       :'<button type="button" class="primary" data-act="present">🎤 Present my city</button><button type="button" data-act="close">View my map</button>'));
   },1000);
@@ -576,12 +587,13 @@ $('#tDur').onchange=e=>{T.dur=+e.target.value;tStop();T.left=T.dur;tShow()};
 
 /* ---- student controls ---- */
 $('#name').oninput=e=>{S.name=e.target.value;save();$('#pName').textContent=S.name.trim()?`${S.name.trim()}’s City`:'My City'};
-function newRound(i){S.round=i;S.placed={};S.locked=false;S.present=false;sel=null;save();render()}
+function newRound(i){S.round=i;S.placed={};S.t0=S.took=null;S.locked=false;S.present=false;sel=null;save();render()}
 $('#roundSel').onchange=e=>{const i=+e.target.value;if(Object.keys(S.placed).length&&!confirm('Change round? Your map will be cleared.')){e.target.value=S.round;return}newRound(i)};
 $('#cdBtn').onclick=countdown;
 $('#presentBtn').onclick=()=>setPresent(true);
 $('#backBtn').onclick=()=>setPresent(false);
-$('#clearBtn').onclick=()=>{if(confirm('Remove all landmarks from your map?')){S.placed={};sel=null;save();render()}};
+$('#clearBtn').onclick=()=>{if(confirm('Remove all landmarks from your map?')){S.placed={};S.t0=S.took=null;sel=null;save();render()}};
+$('#timeOpt').onchange=e=>{S.timeScore=e.target.checked;save();render()};
 $('#nextRoundBtn').onclick=()=>{if(confirm(`Start round ${(S.round+1)%5+1}? Your map will be cleared.`))newRound((S.round+1)%5)};
 
 /* ---- teacher controls ---- */
@@ -611,8 +623,8 @@ S.roads.forEach((_,i)=>{const lab=document.createElement('label');lab.textConten
     renameText(i,v);save();drawStatic();fillEditor();render()};
   lab.append(inp);ri.append(lab)});
 $('#linkBtn').onclick=async()=>{
-  const link=location.href.split('#')[0]+'#roads='+encodeURIComponent(JSON.stringify(S.roads));
-  try{await navigator.clipboard.writeText(link);$('#linkBtn').textContent='✅ Link copied';setTimeout(()=>$('#linkBtn').textContent='🔗 Copy student link with these road names',2000)}
+  const link=location.href.split('#')[0]+'#time='+(S.timeScore?1:0)+'&roads='+encodeURIComponent(JSON.stringify(S.roads));
+  try{await navigator.clipboard.writeText(link);$('#linkBtn').textContent='✅ Link copied';setTimeout(()=>$('#linkBtn').textContent='🔗 Copy student link',2000)}
   catch(e){prompt('Copy this link for your students:',link)}};
 const picked=new Set();
 $('#cls').oninput=e=>{S.cls=e.target.value;save()};
